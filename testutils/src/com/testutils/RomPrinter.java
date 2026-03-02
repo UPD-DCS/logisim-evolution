@@ -311,7 +311,7 @@ public class RomPrinter extends InstanceFactory {
                             int dataBits = contents.getWidth();
                             long memSize = 1L << addrBits;
                             
-                            sb.append(String.format("%s: [%d x %d bits]: ", name, memSize, dataBits));
+                            sb.append(String.format("%s: [%d x %d bits]\n", name, memSize, dataBits));
                             
                             // Print memory contents in hex
                             // Limit output to reasonable size (first 256 bytes or all if smaller)
@@ -319,6 +319,7 @@ public class RomPrinter extends InstanceFactory {
                             for (long i = 0; i < maxPrint; i++) {
                                 long value = contents.get(i);
                                 String hexValue = Long.toHexString(value);
+								if  (value == 0){ continue;}
                                 // Pad with leading zeros
                                 int hexDigits = (dataBits + 3) / 4;
                                 if (hexDigits < 1) hexDigits = 1;
@@ -328,9 +329,8 @@ public class RomPrinter extends InstanceFactory {
                                 }
                                 paddedHex.append(hexValue);
                                 
-                                sb.append(String.format("%s", paddedHex.toString()));
-                                }
-							sb.append("\n");
+                                sb.append(String.format("  [%04X]: 0x%s\n", i, paddedHex.toString()));
+                            }
                             
                             if (memSize > 256) {
                                 sb.append(String.format("  ... (%d more addresses)\n", memSize - 256));

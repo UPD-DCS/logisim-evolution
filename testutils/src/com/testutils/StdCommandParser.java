@@ -34,6 +34,12 @@ public class StdCommandParser {
     // Regex patterns for command parsing
     private static final Pattern STORE_PATTERN = 
         Pattern.compile("^store\\s+(\\w+)\\s*=\\s*(.+)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern STORE_RAM_PATTERN = 
+        Pattern.compile("^store\\s+ram\\s+(\\w+)\\s+(\\d+|0x[0-9a-fA-F]+)\\s*=\\s*(.+)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern STORE_ROM_PATTERN = 
+        Pattern.compile("^store\\s+rom\\s+(\\w+)\\s+(\\d+|0x[0-9a-fA-F]+)\\s*=\\s*(.+)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern STORE_FILE_PATTERN = 
+        Pattern.compile("^storefile\\s+(ram|rom)\\s+(\\w+)\\s+(.+)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern TICK_PATTERN = 
         Pattern.compile("^tick\\s+(\\d+\\.?\\d*)$", Pattern.CASE_INSENSITIVE);
     
@@ -86,6 +92,25 @@ public class StdCommandParser {
     }
     
     /**
+     * Get all pending commands without clearing the queue
+     * @return array of commands
+     */
+    public String[] peekAllCommands() {
+        synchronized (commandQueue) {
+            return commandQueue.toArray(new String[0]);
+        }
+    }
+    
+    /**
+     * Clear all pending commands
+     */
+    public void clearCommands() {
+        synchronized (commandQueue) {
+            commandQueue.clear();
+        }
+    }
+    
+    /**
      * Get all available commands and clear the queue
      * @return array of commands (may be empty)
      */
@@ -116,6 +141,54 @@ public class StdCommandParser {
     }
     
     /**
+     * Parse a RAM store command: store ram ram_name address=0xvalue
+     * @param command the command string
+     * @return MemStoreCommand object, or null if not a valid RAM store command
+     */
+    public MemStoreCommand parseRamStoreCommand(String command) {
+        Matcher matcher = STORE_RAM_PATTERN.matcher(command.trim());
+        if (matcher.matches()) {
+            String memName = matcher.group(1);
+            String addrStr = matcher.group(2);
+            String valueStr = matcher.group(3);
+            return new MemStoreCommand(memName, addrStr, valueStr);
+        }
+        return null;
+    }
+    
+    /**
+     * Parse a ROM store command: store rom rom_name address=0xvalue
+     * @param command the command string
+     * @return MemStoreCommand object, or null if not a valid ROM store command
+     */
+    public MemStoreCommand parseRomStoreCommand(String command) {
+        Matcher matcher = STORE_ROM_PATTERN.matcher(command.trim());
+        if (matcher.matches()) {
+            String memName = matcher.group(1);
+            String addrStr = matcher.group(2);
+            String valueStr = matcher.group(3);
+            return new MemStoreCommand(memName, addrStr, valueStr);
+        }
+        return null;
+    }
+    
+    /**
+     * Parse a storefile command: storefile ram/rom component_name filename
+     * @param command the command string
+     * @return MemStoreFileCommand object, or null if not a valid storefile command
+     */
+    public MemStoreFileCommand parseStoreFileCommand(String command) {
+        Matcher matcher = STORE_FILE_PATTERN.matcher(command.trim());
+        if (matcher.matches()) {
+            String type = matcher.group(1);
+            String memName = matcher.group(2);
+            String fileName = matcher.group(3);
+            return new MemStoreFileCommand(type, memName, fileName);
+        }
+        return null;
+    }
+    
+    /**
      * Parse a tick command: tick n
      * @param command the command string
      * @return TickCommand object, or null if not a valid tick command
@@ -138,6 +211,17 @@ public class StdCommandParser {
         java.util.List<StoreCommand> stores = new java.util.ArrayList<>();
         
         for (String cmd : cmds) {
+            // Check for RAM/ROM store commands first
+            MemStoreCommand memStore = parseRamStoreCommand(cmd);
+            if (memStore == null) {
+                memStore = parseRomStoreCommand(cmd);
+            }
+            if (memStore != null) {
+                // Convert to regular store command format for compatibility
+                stores.add(new StoreCommand(memStore.getMemName() + "[" + memStore.getAddress() + "]", memStore.getValueStr()));
+                continue;
+            }
+            
             StoreCommand store = parseStoreCommand(cmd);
             if (store != null) {
                 stores.add(store);
@@ -145,6 +229,82 @@ public class StdCommandParser {
         }
         
         return stores.toArray(new StoreCommand[0]);
+    }
+    
+    /**
+     * Process all pending commands and return RAM store commands
+     * @return array of RAM store commands
+     */
+    public MemStoreCommand[] getRamStoreCommands() {
+        // Peek at commands without clearing - let RomStore also process
+        String[] cmds = peekAllCommands();
+        java.util.List<MemStoreCommand> stores = new java.util.ArrayList<>();
+        
+        for (String cmd : cmds) {
+            MemStoreCommand store = parseRamStoreCommand(cmd);
+            if (store != null) {
+                stores.add(store);
+            }
+        }
+        
+        return stores.toArray(new MemStoreCommand[0]);
+    }
+    
+    /**
+     * Process all pending commands and return ROM store commands
+     * @return array of ROM store commands
+     */
+    public MemStoreCommand[] getRomStoreCommands() {
+        // Peek at commands without clearing - let RamStore also process
+        String[] cmds = peekAllCommands();
+        java.util.List<MemStoreCommand> stores = new java.util.ArrayList<>();
+        
+        for (String cmd : cmds) {
+            MemStoreCommand store = parseRomStoreCommand(cmd);
+            if (store != null) {
+                stores.add(store);
+            }
+        }
+        
+        return stores.toArray(new MemStoreCommand[0]);
+    }
+    
+    /**
+     * Process all pending commands and return RAM storefile commands
+     * @return array of RAM storefile commands
+     */
+    public MemStoreFileCommand[] getRamStoreFileCommands() {
+        // Peek at commands without clearing - let RomStoreFile also process
+        String[] cmds = peekAllCommands();
+        java.util.List<MemStoreFileCommand> stores = new java.util.ArrayList<>();
+        
+        for (String cmd : cmds) {
+            MemStoreFileCommand store = parseStoreFileCommand(cmd);
+            if (store != null && "ram".equalsIgnoreCase(store.getType())) {
+                stores.add(store);
+            }
+        }
+        
+        return stores.toArray(new MemStoreFileCommand[0]);
+    }
+    
+    /**
+     * Process all pending commands and return ROM storefile commands
+     * @return array of ROM storefile commands
+     */
+    public MemStoreFileCommand[] getRomStoreFileCommands() {
+        // Peek at commands without clearing - let RamStoreFile also process
+        String[] cmds = peekAllCommands();
+        java.util.List<MemStoreFileCommand> stores = new java.util.ArrayList<>();
+        
+        for (String cmd : cmds) {
+            MemStoreFileCommand store = parseStoreFileCommand(cmd);
+            if (store != null && "rom".equalsIgnoreCase(store.getType())) {
+                stores.add(store);
+            }
+        }
+        
+        return stores.toArray(new MemStoreFileCommand[0]);
     }
     
     /**
@@ -255,6 +415,98 @@ public class StdCommandParser {
         @Override
         public String toString() {
             return "store " + registerName + "=" + valueStr;
+        }
+    }
+    
+    /**
+     * Represents a memory store command: store ram/rom name address=value
+     */
+    public static class MemStoreCommand {
+        private final String memName;
+        private final String addrStr;
+        private final String valueStr;
+        
+        public MemStoreCommand(String memName, String addrStr, String valueStr) {
+            this.memName = memName;
+            this.addrStr = addrStr;
+            this.valueStr = valueStr;
+        }
+        
+        public String getMemName() {
+            return memName;
+        }
+        
+        public String getAddress() {
+            return addrStr;
+        }
+        
+        public String getValueStr() {
+            return valueStr;
+        }
+        
+        /**
+         * Parse the address string to a long
+         * Supports: decimal (123), hex (0x7B)
+         */
+        public long parseAddress() {
+            String v = addrStr.trim();
+            if (v.startsWith("0x") || v.startsWith("0X")) {
+                return Long.parseLong(v.substring(2), 16);
+            } else {
+                return Long.parseLong(v);
+            }
+        }
+        
+        /**
+         * Parse the value string to a long
+         * Supports: decimal (123), hex (0x7B), binary (0b1111011)
+         */
+        public long parseValue() {
+            String v = valueStr.trim();
+            if (v.startsWith("0x") || v.startsWith("0X")) {
+                return Long.parseLong(v.substring(2), 16);
+            } else if (v.startsWith("0b") || v.startsWith("0B")) {
+                return Long.parseLong(v.substring(2), 2);
+            } else {
+                return Long.parseLong(v);
+            }
+        }
+        
+        @Override
+        public String toString() {
+            return "store " + memName + " " + addrStr + "=" + valueStr;
+        }
+    }
+    
+    /**
+     * Represents a memory storefile command: storefile ram/rom name filename
+     */
+    public static class MemStoreFileCommand {
+        private final String type;
+        private final String memName;
+        private final String fileName;
+        
+        public MemStoreFileCommand(String type, String memName, String fileName) {
+            this.type = type;
+            this.memName = memName;
+            this.fileName = fileName;
+        }
+        
+        public String getType() {
+            return type;
+        }
+        
+        public String getMemName() {
+            return memName;
+        }
+        
+        public String getFileName() {
+            return fileName;
+        }
+        
+        @Override
+        public String toString() {
+            return "storefile " + type + " " + memName + " " + fileName;
         }
     }
     

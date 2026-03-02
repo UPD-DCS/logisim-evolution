@@ -187,7 +187,7 @@ public class RamPrinter extends InstanceFactory {
             // Draw the main component outline rectangle
             g.drawRect(bds.getX() + 10, bds.getY() + 10, 40, 40);
             
-            // Draw RAM label in the center
+            // Draw ROM label in the center
             GraphicsUtil.switchToWidth(g, 1);
             g.setColor(Color.BLACK);
             GraphicsUtil.drawCenteredText(g, "RAM", bds.getX() + 18, bds.getY() + 18);
@@ -253,12 +253,12 @@ public class RamPrinter extends InstanceFactory {
         StringBuilder sb = new StringBuilder();
         sb.append("=== RAM Values ===\n");
         
-        int ramCount = 0;
+        int romCount = 0;
         
         // Process the main circuit and all sub-circuits recursively
-        ramCount = collectRamValues(circuitState, sb, ramCount, "");
+        romCount = collectRamValues(circuitState, sb, romCount, "");
         
-        if (ramCount == 0) {
+        if (romCount == 0) {
             sb.append("(No RAM found)\n");
         }
         sb.append("==================\n");
@@ -270,7 +270,7 @@ public class RamPrinter extends InstanceFactory {
     /**
      * Recursively collect RAM values from a circuit state and all its sub-circuits
      */
-    private int collectRamValues(CircuitState circuitState, StringBuilder sb, int ramCount, String prefix) {
+    private int collectRamValues(CircuitState circuitState, StringBuilder sb, int romCount, String prefix) {
         // Get all components in this circuit
         Set<Component> components = circuitState.getCircuit().getComponents();
         
@@ -284,64 +284,72 @@ public class RamPrinter extends InstanceFactory {
                 // Get the RAM state from the circuit state
                 InstanceState ramState = circuitState.getInstanceState(comp);
                 
-                // Try to get the memory state from the InstanceState
-                // MemState has a public getContents() method, so we need to access it via the InstanceState's data
+                // Use reflection to get the memory state and contents
+                // since MemState and getState are package-private
                 try {
-                    // First try to get data directly from InstanceState
-                    Object memState = ramState.getData();
+                    // Get the getState method from the Ram factory (via Mem superclass)
+                    Method getStateMethod = Ram.class.getSuperclass().getDeclaredMethod("getState", com.cburch.logisim.instance.InstanceState.class);
+                    getStateMethod.setAccessible(true);
+                    Object memState = getStateMethod.invoke(comp.getFactory(), ramState);
                     
                     if (memState != null) {
-                        // Get the getContents method from the class hierarchy
-                        Method getContentsMethod = null;
+                        // Get the contents field - walk up class hierarchy to find it
+                        java.lang.reflect.Field contentsField = null;
                         Class<?> cls = memState.getClass();
-                        while (cls != null && getContentsMethod == null) {
+                        while (cls != null) {
                             try {
-                                getContentsMethod = cls.getMethod("getContents");
-                            } catch (NoSuchMethodException e) {
+                                contentsField = cls.getDeclaredField("contents");
+                                break;
+                            } catch (NoSuchFieldException e) {
                                 cls = cls.getSuperclass();
                             }
                         }
                         
-                        if (getContentsMethod != null) {
-                            MemContents contents = (MemContents) getContentsMethod.invoke(memState);
-                            
-                            if (contents != null) {
-                                ramCount++;
-                                String name = (label != null && !label.isEmpty()) ? label : "unnamed_ram_" + ramCount;
-                                // Add circuit prefix if in sub-circuit
-                                if (!prefix.isEmpty()) {
-                                    name = prefix + "/" + name;
-                                }
+                        if (contentsField != null) {
+                            contentsField.setAccessible(true);
+                            try {
+                                MemContents contents = (MemContents) contentsField.get(memState);
                                 
-                                // Get memory contents
-                                int addrBits = contents.getLogLength();
-                                int dataBits = contents.getWidth();
-                                long memSize = 1L << addrBits;
-                                
-                                sb.append(String.format("%s: [%d x %d bits]: ", name, memSize, dataBits));
-                                
-                                // Print memory contents in hex
-                                // Limit output to reasonable size (first 256 bytes or all if smaller)
-                                long maxPrint = Math.min(memSize, 256);
-                                for (long i = 0; i < maxPrint; i++) {
-                                    long value = contents.get(i);
-                                    String hexValue = Long.toHexString(value);
-                                    // Pad with leading zeros
-                                    int hexDigits = (dataBits + 3) / 4;
-                                    if (hexDigits < 1) hexDigits = 1;
-                                    StringBuilder paddedHex = new StringBuilder();
-                                    for (int j = 0; j < hexDigits - hexValue.length(); j++) {
-                                        paddedHex.append('0');
+                                if (contents != null) {
+                                    romCount++;
+                                    String name = (label != null && !label.isEmpty()) ? label : "unnamed_ram_" + romCount;
+                                    // Add circuit prefix if in sub-circuit
+                                    if (!prefix.isEmpty()) {
+                                        name = prefix + "/" + name;
                                     }
-                                    paddedHex.append(hexValue);
                                     
-                                    sb.append(String.format("%s", paddedHex.toString()));
+                                    // Get memory contents
+                                    int addrBits = contents.getLogLength();
+                                    int dataBits = contents.getWidth();
+                                    long memSize = 1L << addrBits;
+                                    
+                                    sb.append(String.format("%s: [%d x %d bits]\n", name, memSize, dataBits));
+                                    
+                                    // Print memory contents in hex
+                                    // Limit output to reasonable size (first 256 bytes or all if smaller)
+                                    long maxPrint = Math.min(memSize, 256);
+                                    for (long i = 0; i < maxPrint; i++) {
+                                        long value = contents.get(i);
+                                        if (value == 0) continue;
+                                        String hexValue = Long.toHexString(value);
+                                        // Pad with leading zeros
+                                        int hexDigits = (dataBits + 3) / 4;
+                                        if (hexDigits < 1) hexDigits = 1;
+                                        StringBuilder paddedHex = new StringBuilder();
+                                        for (int j = 0; j < hexDigits - hexValue.length(); j++) {
+                                            paddedHex.append('0');
+                                        }
+                                        paddedHex.append(hexValue);
+                                        
+                                        sb.append(String.format("  [%04X]: 0x%s\n", i, paddedHex.toString()));
+                                    }
+                                    
+                                    if (memSize > 256) {
+                                        sb.append(String.format("  ... (%d more addresses)\n", memSize - 256));
+                                    }
                                 }
-								sb.append("\n");
-                                
-                                if (memSize > 256) {
-                                    sb.append(String.format("  ... (%d more addresses)\n", memSize - 256));
-                                }
+                            } catch (IllegalAccessException e) {
+                                System.err.println("[RamPrinter] Error accessing contents: " + e.getMessage());
                             }
                         }
                     }
@@ -355,10 +363,10 @@ public class RamPrinter extends InstanceFactory {
         Set<CircuitState> substates = circuitState.getSubstates();
         for (CircuitState subState : substates) {
             String subCircuitName = subState.getCircuit().getName();
-            ramCount = collectRamValues(subState, sb, ramCount, prefix.isEmpty() ? subCircuitName : prefix + "/" + subCircuitName);
+            romCount = collectRamValues(subState, sb, romCount, prefix.isEmpty() ? subCircuitName : prefix + "/" + subCircuitName);
         }
         
-        return ramCount;
+        return romCount;
     }
     
     // Simple class to hold string getter

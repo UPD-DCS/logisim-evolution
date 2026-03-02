@@ -1,10 +1,12 @@
 /*
  * Test Utils Library for Logisim Evolution
  * Provides testing utility components:
- * - TestUtils: Register Printer
- * - RamPrinter: RAM Printer
- * - RomPrinter: ROM Printer
+ * - RegisterPrinter: Print register values to stdout
+ * - RamPrinter: Print RAM values to stdout
+ * - RomPrinter: Print ROM values to stdout
  * - RegisterStore: Load values into named registers via terminal
+ * - RamStore: Load values into named RAM via terminal
+ * - RomStore: Load values into named ROM via terminal
  * - ClockSignal: Generate clock pulses via terminal
  */
 
@@ -55,6 +57,14 @@ public class TestUtilsLibrary extends Library {
             // Register Store component - loads values via terminal command
             InstanceFactory registerStore = new RegisterStore();
             tools.add(new AddTool(registerStore));
+            
+            // RAM Store component - loads values into named RAM via terminal command
+            InstanceFactory ramStore = new RamStore();
+            tools.add(new AddTool(ramStore));
+            
+            // ROM Store component - loads values into named ROM via terminal command
+            InstanceFactory romStore = new RomStore();
+            tools.add(new AddTool(romStore));
             
             // Clock Signal component - generates clock pulses via terminal
             InstanceFactory clockSignal = new ClockSignal();
