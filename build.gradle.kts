@@ -21,7 +21,7 @@ plugins {
   id("com.github.ben-manes.versions") version "0.53.0"
   java
   application
-  id("com.gradleup.shadow") version "9.3.1"
+  id("com.gradleup.shadow") version "9.3.2"
   id("org.sonarqube") version "7.2.2.6593"
 }
 
@@ -36,7 +36,7 @@ application {
 dependencies {
   implementation("org.hamcrest:hamcrest:3.0")
   implementation("javax.help:javahelp:2.0.05")
-  implementation("com.fifesoft:rsyntaxtextarea:3.6.1")
+  implementation("com.fifesoft:rsyntaxtextarea:3.6.2")
   implementation("net.sf.nimrod:nimrod-laf:1.2")
   implementation("org.drjekyll:colorpicker:2.0.1")
   implementation("at.swimmesberger:swingx-core:1.6.8")
@@ -54,7 +54,7 @@ dependencies {
 
   testImplementation(platform("org.junit:junit-bom:6.0.3"))
   testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
-  testImplementation("org.mockito:mockito-junit-jupiter:5.21.0")
+  testImplementation("org.mockito:mockito-junit-jupiter:5.22.0")
   testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
