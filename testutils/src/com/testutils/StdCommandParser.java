@@ -42,6 +42,8 @@ public class StdCommandParser {
         Pattern.compile("^storefile\\s+(ram|rom)\\s+(\\w+)\\s+(.+)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern TICK_PATTERN = 
         Pattern.compile("^tick\\s+(\\d+\\.?\\d*)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PRINT_PATTERN = 
+        Pattern.compile("^print\\s+(ram|rom|register)\\s+(\\w+)$", Pattern.CASE_INSENSITIVE);
     
     /**
      * Private constructor - use getInstance()
@@ -203,6 +205,21 @@ public class StdCommandParser {
     }
     
     /**
+     * Parse a print command: print ram/rom/register name
+     * @param command the command string
+     * @return PrintCommand object, or null if not a valid print command
+     */
+    public PrintCommand parsePrintCommand(String command) {
+        Matcher matcher = PRINT_PATTERN.matcher(command.trim());
+        if (matcher.matches()) {
+            String type = matcher.group(1);
+            String name = matcher.group(2);
+            return new PrintCommand(type, name);
+        }
+        return null;
+    }
+    
+    /**
      * Process all pending commands and return store commands
      * @return array of store commands
      */
@@ -323,6 +340,60 @@ public class StdCommandParser {
         }
         
         return ticks.toArray(new TickCommand[0]);
+    }
+    
+    /**
+     * Process all pending commands and return RAM print commands
+     * @return array of print commands for RAM
+     */
+    public PrintCommand[] getPrintRamCommands() {
+        String[] cmds = peekAllCommands();
+        java.util.List<PrintCommand> prints = new java.util.ArrayList<>();
+        
+        for (String cmd : cmds) {
+            PrintCommand print = parsePrintCommand(cmd);
+            if (print != null && "ram".equalsIgnoreCase(print.getType())) {
+                prints.add(print);
+            }
+        }
+        
+        return prints.toArray(new PrintCommand[0]);
+    }
+    
+    /**
+     * Process all pending commands and return ROM print commands
+     * @return array of print commands for ROM
+     */
+    public PrintCommand[] getPrintRomCommands() {
+        String[] cmds = peekAllCommands();
+        java.util.List<PrintCommand> prints = new java.util.ArrayList<>();
+        
+        for (String cmd : cmds) {
+            PrintCommand print = parsePrintCommand(cmd);
+            if (print != null && "rom".equalsIgnoreCase(print.getType())) {
+                prints.add(print);
+            }
+        }
+        
+        return prints.toArray(new PrintCommand[0]);
+    }
+    
+    /**
+     * Process all pending commands and return register print commands
+     * @return array of print commands for registers
+     */
+    public PrintCommand[] getPrintRegisterCommands() {
+        String[] cmds = peekAllCommands();
+        java.util.List<PrintCommand> prints = new java.util.ArrayList<>();
+        
+        for (String cmd : cmds) {
+            PrintCommand print = parsePrintCommand(cmd);
+            if (print != null && "register".equalsIgnoreCase(print.getType())) {
+                prints.add(print);
+            }
+        }
+        
+        return prints.toArray(new PrintCommand[0]);
     }
     
     /**
@@ -527,6 +598,32 @@ public class StdCommandParser {
         @Override
         public String toString() {
             return "tick " + count;
+        }
+    }
+    
+    /**
+     * Represents a print command: print ram/rom/register name
+     */
+    public static class PrintCommand {
+        private final String type;  // "ram", "rom", or "register"
+        private final String name;
+        
+        public PrintCommand(String type, String name) {
+            this.type = type;
+            this.name = name;
+        }
+        
+        public String getType() {
+            return type;
+        }
+        
+        public String getName() {
+            return name;
+        }
+        
+        @Override
+        public String toString() {
+            return "print " + type + " " + name;
         }
     }
 }

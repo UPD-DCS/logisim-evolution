@@ -2,23 +2,23 @@
  * ROM Store Component for Logisim Evolution
  * Loads values into named ROM components via terminal command: store rom rom_name address=0xVALUE
  * Example: store rom myRom 0x10=0xFF
+ * Uses Timer-based polling to check for commands without requiring clock trigger
  */
 
 package com.testutils;
 
 import com.cburch.logisim.circuit.CircuitState;
+import com.cburch.logisim.circuit.Simulator;
 import com.cburch.logisim.comp.Component;
 import com.cburch.logisim.data.Attribute;
 import com.cburch.logisim.data.AttributeSet;
-import com.cburch.logisim.data.BitWidth;
 import com.cburch.logisim.data.Bounds;
-import com.cburch.logisim.data.Value;
+import com.cburch.logisim.instance.InstanceComponent;
 import com.cburch.logisim.instance.InstanceData;
 import com.cburch.logisim.instance.InstanceFactory;
 import com.cburch.logisim.instance.InstancePainter;
 import com.cburch.logisim.instance.InstanceState;
 import com.cburch.logisim.instance.InstanceStateImpl;
-import com.cburch.logisim.instance.Port;
 import com.cburch.logisim.instance.StdAttr;
 import com.cburch.logisim.prefs.AppPreferences;
 import com.cburch.logisim.std.memory.MemContents;
@@ -27,6 +27,8 @@ import com.cburch.logisim.util.GraphicsUtil;
 
 import java.awt.Color;
 import java.awt.Graphics;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -34,38 +36,57 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Set;
 
+import javax.swing.Timer;
+
 /**
  * Component that loads values into named ROM via terminal commands.
+ * Uses Timer-based polling to check for commands without requiring clock trigger.
  * Command format: store rom rom_name address=0xVALUE (e.g., store rom myRom 0x10=0xFF)
  */
 public class RomStore extends InstanceFactory {
     
     public static final String _ID = "RomStore";
     
-    // Clock input port index
-    private static final int CLOCK_PORT = 0;
+    // Timer interval in milliseconds - check for commands frequently
+    private static final int TIMER_INTERVAL_MS = 50;
     
     // Component size
     private static final int XSIZE = 60;
     private static final int YSIZE = 50;
     
-    // Data class to track last clock value for edge detection
-    private static class ClockState implements InstanceData, Cloneable {
-        Value lastClock = Value.FALSE;
+    // Data class for Timer-based polling
+    private static class RomStoreData implements InstanceData, Cloneable, ActionListener {
+        // Timer for checking commands
+        private Timer timer;
+        private InstanceComponent component;
+        private Simulator simulator;
+        
+        RomStoreData(InstanceState state) {
+            // Initialize timer for checking commands
+            component = state.getInstance().getComponent();
+            simulator = state.getProject().getSimulator();
+            timer = new Timer(TIMER_INTERVAL_MS, this);
+            timer.start();
+        }
         
         @Override
-        public ClockState clone() {
+        public RomStoreData clone() {
             try {
-                return (ClockState) super.clone();
+                return (RomStoreData) super.clone();
             } catch (CloneNotSupportedException e) {
                 return null;
             }
         }
         
-        boolean isRisingEdge(Value newClock) {
-            boolean rising = lastClock == Value.FALSE && newClock == Value.TRUE;
-            lastClock = newClock;
-            return rising;
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            // Timer fired - trigger simulation update to process commands
+            if (component != null) {
+                component.fireInvalidated();
+            }
+            if (simulator != null) {
+                simulator.nudge();
+            }
         }
     }
     
@@ -76,14 +97,12 @@ public class RomStore extends InstanceFactory {
                 StdAttr.LABEL, 
                 StdAttr.LABEL_FONT, 
                 StdAttr.LABEL_LOC,
-                StdAttr.TRIGGER,
                 StdAttr.APPEARANCE
             },
             new Object[] { 
                 "", 
                 StdAttr.DEFAULT_LABEL_FONT, 
                 StdAttr.LABEL_CENTER,
-                StdAttr.TRIG_RISING,
                 AppPreferences.getDefaultAppearance()
             });
     }
@@ -100,7 +119,8 @@ public class RomStore extends InstanceFactory {
     @Override
     protected void configureNewInstance(com.cburch.logisim.instance.Instance instance) {
         instance.addAttributeListener();
-        updatePorts(instance);
+        // No ports - this component uses timer-based polling
+        instance.setPorts(new com.cburch.logisim.instance.Port[0]);
         instance.computeLabelTextField(com.cburch.logisim.instance.Instance.AVOID_SIDES);
     }
     
@@ -108,21 +128,11 @@ public class RomStore extends InstanceFactory {
     protected void instanceAttributeChanged(com.cburch.logisim.instance.Instance instance, Attribute<?> attr) {
         if (attr == StdAttr.APPEARANCE) {
             instance.recomputeBounds();
-            updatePorts(instance);
+            instance.setPorts(new com.cburch.logisim.instance.Port[0]);
             instance.computeLabelTextField(com.cburch.logisim.instance.Instance.AVOID_SIDES);
         } else if (attr == StdAttr.LABEL_LOC) {
             instance.computeLabelTextField(com.cburch.logisim.instance.Instance.AVOID_SIDES);
         }
-    }
-    
-    private void updatePorts(com.cburch.logisim.instance.Instance instance) {
-        final var ps = new Port[1];
-        if (instance.getAttributeValue(StdAttr.APPEARANCE) == StdAttr.APPEAR_CLASSIC) {
-            ps[CLOCK_PORT] = new Port(-20, 10, Port.INPUT, BitWidth.ONE);
-        } else {
-            ps[CLOCK_PORT] = new Port(0, 40, Port.INPUT, BitWidth.ONE);
-        }
-        instance.setPorts(ps);
     }
     
     @Override
@@ -142,26 +152,9 @@ public class RomStore extends InstanceFactory {
             g.setColor(Color.BLACK);
             
             GraphicsUtil.switchToWidth(g, 1);
-            GraphicsUtil.drawCenteredText(g, "ROM", bds.getX() + bds.getWidth() / 2, bds.getY() + 10);
-            GraphicsUtil.drawCenteredText(g, "Store", bds.getX() + bds.getWidth() / 2, bds.getY() + 22);
-            
-            // Draw trigger type
-            Object trigger = painter.getAttributeValue(StdAttr.TRIGGER);
-            String triggerText;
-            if (trigger == StdAttr.TRIG_RISING) {
-                triggerText = "^>";
-            } else if (trigger == StdAttr.TRIG_FALLING) {
-                triggerText = "v>";
-            } else if (trigger == StdAttr.TRIG_HIGH) {
-                triggerText = "1";
-            } else if (trigger == StdAttr.TRIG_LOW) {
-                triggerText = "0";
-            } else {
-                triggerText = "^>";
-            }
-            GraphicsUtil.drawCenteredText(g, triggerText, bds.getX() + bds.getWidth() / 2, bds.getY() + 34);
-            
-            painter.drawPort(CLOCK_PORT);
+            GraphicsUtil.drawCenteredText(g, "ROM", bds.getX() + bds.getWidth() / 2, bds.getY() + 12);
+            GraphicsUtil.drawCenteredText(g, "Store", bds.getX() + bds.getWidth() / 2, bds.getY() + 24);
+            GraphicsUtil.drawCenteredText(g, "(poll)", bds.getX() + bds.getWidth() / 2, bds.getY() + 36);
         } else {
             // Evolution appearance
             g.setColor(componentColor);
@@ -171,24 +164,8 @@ public class RomStore extends InstanceFactory {
             
             GraphicsUtil.switchToWidth(g, 1);
             g.setColor(Color.BLACK);
-            GraphicsUtil.drawCenteredText(g, "ROM", bds.getX() + 18, bds.getY() + 18);
-            GraphicsUtil.drawCenteredText(g, "Store", bds.getX() + 18, bds.getY() + 30);
-            
-            // Draw clock symbol
-            Object trig = painter.getAttributeValue(StdAttr.TRIGGER);
-            boolean isLatch = (trig == StdAttr.TRIG_HIGH || trig == StdAttr.TRIG_LOW);
-            if (!isLatch) {
-                painter.drawClockSymbol(bds.getX() + 10, bds.getY() + 40);
-            } else {
-                g.setColor(secondaryColor);
-                GraphicsUtil.drawCenteredText(g, "E", bds.getX() + 18, bds.getY() + 40);
-            }
-            
-            g.setColor(componentColor);
-            GraphicsUtil.switchToWidth(g, 2);
-            g.drawLine(bds.getX(), bds.getY() + 40, bds.getX() + 10, bds.getY() + 40);
-            
-            painter.drawPort(CLOCK_PORT);
+            GraphicsUtil.drawCenteredText(g, "ROM", bds.getX() + 30, bds.getY() + 22);
+            GraphicsUtil.drawCenteredText(g, "Store", bds.getX() + 30, bds.getY() + 36);
         }
         
         painter.drawLabel();
@@ -200,33 +177,18 @@ public class RomStore extends InstanceFactory {
         StdCommandParser parser = StdCommandParser.getInstance();
         parser.start();
         
-        // Get the clock input value
-        Value clockValue = state.getPortValue(CLOCK_PORT);
-        
-        // Get or create clock state data for edge detection
-        ClockState clockState = (ClockState) state.getData();
-        if (clockState == null) {
-            clockState = new ClockState();
-            state.setData(clockState);
+        // Get or create timer-based data
+        RomStoreData data = (RomStoreData) state.getData();
+        if (data == null) {
+            data = new RomStoreData(state);
+            state.setData(data);
         }
         
-        // Get the trigger attribute
-        Object triggerType = state.getAttributeValue(StdAttr.TRIGGER);
+        // Get all ROM store commands from the parser
+        StdCommandParser.MemStoreCommand[] storeCommands = parser.getRomStoreCommands();
+        StdCommandParser.MemStoreFileCommand[] storeFileCommands = parser.getRomStoreFileCommands();
         
-        // Check if the clock trigger condition is met
-        boolean triggered = false;
-        if (triggerType == null || triggerType == StdAttr.TRIG_RISING) {
-            triggered = clockState.isRisingEdge(clockValue);
-        } else if (triggerType == StdAttr.TRIG_FALLING) {
-            triggered = clockState.lastClock == Value.TRUE && clockValue == Value.FALSE;
-            clockState.lastClock = clockValue;
-        } else if (triggerType == StdAttr.TRIG_HIGH) {
-            triggered = clockValue == Value.TRUE;
-        } else if (triggerType == StdAttr.TRIG_LOW) {
-            triggered = clockValue == Value.FALSE;
-        }
-        
-        if (!triggered) {
+        if (storeCommands.length == 0 && storeFileCommands.length == 0) {
             return;
         }
         
@@ -239,14 +201,6 @@ public class RomStore extends InstanceFactory {
         }
         
         if (circuitState == null) {
-            return;
-        }
-        
-        // Get all ROM store commands from the parser
-        StdCommandParser.MemStoreCommand[] storeCommands = parser.getRomStoreCommands();
-        StdCommandParser.MemStoreFileCommand[] storeFileCommands = parser.getRomStoreFileCommands();
-        
-        if (storeCommands.length == 0 && storeFileCommands.length == 0) {
             return;
         }
         
@@ -311,14 +265,14 @@ public class RomStore extends InstanceFactory {
                 
                 // Use reflection to get the memory state and contents
                 try {
-                    // Get the getState method from the Rom factory (via Mem superclass)
-                    Method getStateMethod = Rom.class.getSuperclass()
+                    // Get the getState method from the memory factory (via Mem superclass)
+                    Method getStateMethod = comp.getFactory().getClass().getSuperclass()
                         .getDeclaredMethod("getState", com.cburch.logisim.instance.InstanceState.class);
                     getStateMethod.setAccessible(true);
                     Object stateObj = getStateMethod.invoke(comp.getFactory(), memState);
                     
                     if (stateObj != null) {
-                        // Get the contents field from RomState
+                        // Get the contents field - walk up class hierarchy
                         Field contentsField = null;
                         Class<?> cls = stateObj.getClass();
                         while (cls != null) {
@@ -422,7 +376,7 @@ public class RomStore extends InstanceFactory {
                 InstanceState memState = circuitState.getInstanceState(comp);
                 
                 try {
-                    Method getStateMethod = Rom.class.getSuperclass()
+                    Method getStateMethod = comp.getFactory().getClass().getSuperclass()
                         .getDeclaredMethod("getState", com.cburch.logisim.instance.InstanceState.class);
                     getStateMethod.setAccessible(true);
                     Object stateObj = getStateMethod.invoke(comp.getFactory(), memState);
