@@ -30,6 +30,7 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.lang.reflect.Field;
 import java.util.Set;
 
 import javax.swing.Timer;
@@ -221,20 +222,32 @@ public class RegisterPrinter extends InstanceFactory {
                 
                 // Check if this is the target register
                 if (label != null && label.equals(targetName)) {
-                    // Get the output location
-                    Location outLoc = getRegisterOutputLocation(comp);
+                    // Get the register state from the circuit state
+                    InstanceState regState = circuitState.getInstanceState(comp);
                     
-                    if (outLoc != null) {
-                        Value val = circuitState.getValue(outLoc);
+                    if (regState != null) {
+                        Object regData = regState.getData();
                         
-                        if (val != null) {
-                            String name = label;
-                            if (!prefix.isEmpty()) {
-                                name = prefix + "/" + name;
+                        if (regData != null) {
+                            try {
+                                // Use reflection to get the value field
+                                Field valueField = regData.getClass().getDeclaredField("value");
+                                valueField.setAccessible(true);
+                                Object valueObj = valueField.get(regData);
+                                
+                                if (valueObj instanceof Value) {
+                                    Value val = (Value) valueObj;
+                                    String name = label;
+                                    if (!prefix.isEmpty()) {
+                                        name = prefix + "/" + name;
+                                    }
+                                    String hexValue = StringUtil.toHexString(val.getBitWidth().getWidth(), val.toLongValue());
+                                    System.out.println("[RegisterPrinter] " + name + " = 0x" + hexValue + " (" + val.getBitWidth().getWidth() + " bits)");
+                                    return;
+                                }
+                            } catch (Exception e) {
+                                System.err.println("[RegisterPrinter] Error accessing register: " + e.getMessage());
                             }
-                            String hexValue = StringUtil.toHexString(val.getBitWidth().getWidth(), val.toLongValue());
-                            System.out.println("[RegisterPrinter] " + name + " = 0x" + hexValue + " (" + val.getBitWidth().getWidth() + " bits)");
-                            return;
                         }
                     }
                 }
