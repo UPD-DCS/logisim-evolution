@@ -474,11 +474,9 @@ public class TtyInterface {
     StdinThread stdinThread = null;
     if (showTty) {
       keyboardStates = new ArrayList<>();
-      final var ttyFound = prepareForTty(circState, keyboardStates);
-      if (!ttyFound) {
-        logger.error("{}", S.get("ttyNoTtyError"));
-        System.exit(-1);
-      }
+      prepareForTty(circState, keyboardStates);
+      // No longer require TTY or Keyboard components - testutils components
+      // (RegisterStore, RamStore, RomStore, ClockSignal) use StdCommandParser directly
       if (keyboardStates.isEmpty()) {
         keyboardStates = null;
       } else {
