@@ -57,20 +57,24 @@ public final class ProjectActions {
     private final Loader loader;
     private final Project proj;
     private final boolean isStartupScreen;
+    private final boolean showFrame;
 
-    public CreateFrame(Loader loader, Project proj, boolean isStartup) {
+    public CreateFrame(Loader loader, Project proj, boolean isStartup, boolean showFrame) {
       this.loader = loader;
       this.proj = proj;
       this.isStartupScreen = isStartup;
+      this.showFrame = showFrame;
     }
 
     @Override
     public void run() {
       try {
         final var frame = createFrame(null, proj);
-        frame.setVisible(true);
-        frame.toFront();
-        frame.getCanvas().requestFocus();
+        frame.setVisible(showFrame);
+        if (showFrame) {
+          frame.toFront();
+          frame.getCanvas().requestFocus();
+        }
         loader.setParent(frame);
         if (isStartupScreen) {
           proj.setStartupScreen(true);
@@ -111,11 +115,11 @@ public final class ProjectActions {
   }
 
   private static Project completeProject(
-      SplashScreen monitor, Loader loader, LogisimFile file, boolean isStartup) {
+      SplashScreen monitor, Loader loader, LogisimFile file, boolean isStartup, boolean showFrame) {
     if (monitor != null) monitor.setProgress(SplashScreen.PROJECT_CREATE);
     final var ret = new Project(file);
     if (monitor != null) monitor.setProgress(SplashScreen.FRAME_CREATE);
-    SwingUtilities.invokeLater(new CreateFrame(loader, ret, isStartup));
+    SwingUtilities.invokeLater(new CreateFrame(loader, ret, isStartup, showFrame));
     updatecircs(file, ret);
     return ret;
   }
@@ -206,7 +210,7 @@ public final class ProjectActions {
       }
     }
     if (file == null) file = createEmptyFile(loader, null);
-    return completeProject(monitor, loader, file, isStartupScreen);
+    return completeProject(monitor, loader, file, isStartupScreen, true);
   }
 
   public static void doMerge(Component parent, Project baseProject) {
@@ -359,16 +363,21 @@ public final class ProjectActions {
     final var file = loader.openLogisimFile(source, substitutions);
     AppPreferences.updateRecentFile(source);
 
-    return completeProject(monitor, loader, file, false);
+    return completeProject(monitor, loader, file, false, true);
   }
 
   public static Project doOpenNoWindow(SplashScreen monitor, File source)
       throws LoadFailedException {
+    return doOpenNoWindow(monitor, source, null);
+  }
+
+  public static Project doOpenNoWindow(SplashScreen monitor, File source, Map<File, File> substitutions)
+      throws LoadFailedException {
+    if (monitor != null) monitor.setProgress(SplashScreen.FILE_LOAD);
     final var loader = new Loader(monitor);
-    final var file = loader.openLogisimFile(source);
-    final var ret = new Project(file);
-    updatecircs(file, ret);
-    return ret;
+    final var file = loader.openLogisimFile(source, substitutions);
+    AppPreferences.updateRecentFile(source);
+    return completeProject(monitor, loader, file, false, false);
   }
 
   public static void doQuit() {

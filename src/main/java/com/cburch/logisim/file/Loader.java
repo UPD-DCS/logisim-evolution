@@ -261,8 +261,31 @@ public class Loader implements LibraryLoader {
   }
 
   private File getSubstitution(File source) {
-    final var ret = substitutions.get(source);
-    return ret == null ? source : ret;
+    // First try exact match
+    var ret = substitutions.get(source);
+    if (ret != null) return ret;
+    
+    // Try matching just the filename (for absolute paths in circ files)
+    var filename = source.getName();
+    var relativeKey = new File(filename);
+    ret = substitutions.get(relativeKey);
+    if (ret != null) {
+      // If the source is an absolute path, make the replacement also absolute
+      if (source.isAbsolute()) {
+        var parent = source.getParentFile();
+        if (parent != null) {
+          return new File(parent, ret.getName());
+        }
+      }
+      return ret;
+    }
+    
+    return source;
+  }
+
+  // Public method to get substitution (used by LibraryManager)
+  public File applySubstitution(File source) {
+    return getSubstitution(source);
   }
 
   Library loadJarFile(File request, String className) throws LoadFailedException {

@@ -25,6 +25,7 @@ import com.cburch.logisim.std.plexers.PlexersLibrary;
 import com.cburch.logisim.std.tcl.TclLibrary;
 import com.cburch.logisim.std.ttl.TtlLibrary;
 import com.cburch.logisim.std.wiring.WiringLibrary;
+import com.cburch.logisim.testutils.TestUtilsLibrary;
 import com.cburch.logisim.tools.Library;
 import com.cburch.logisim.tools.Tool;
 import java.util.Arrays;
@@ -58,7 +59,8 @@ public class Builtin extends Library {
             new TclLibrary(),
             new BfhLibrary(),
             new ExtraIoLibrary(),
-            new Soc());
+            new Soc(),
+            new TestUtilsLibrary());
   }
 
   @Override

@@ -266,14 +266,19 @@ public final class LibraryManager {
         return ret;
       }
       case "file" -> {
-        final var toRead = loader.getFileFor(name, Loader.LOGISIM_FILTER);
+        // Apply substitution FIRST (before converting to absolute path)
+        var libFile = new File(name);
+        var libName = loader.applySubstitution(libFile);
+        var toRead = loader.getFileFor(libName.getPath(), Loader.LOGISIM_FILTER);
         return loadLogisimLibrary(loader, toRead);
       }
       case "jar" -> {
         final var sepLoc = name.lastIndexOf(DESC_SEP);
         final var fileName = name.substring(0, sepLoc);
         final var className = name.substring(sepLoc + 1);
-        final var toRead = loader.getFileFor(fileName, Loader.JAR_FILTER);
+        // Apply substitution FIRST (before converting to absolute path)
+        var libName = loader.applySubstitution(new File(fileName));
+        var toRead = loader.getFileFor(libName.getPath(), Loader.JAR_FILTER);
         return loadJarLibrary(loader, toRead, className);
       }
       default -> {

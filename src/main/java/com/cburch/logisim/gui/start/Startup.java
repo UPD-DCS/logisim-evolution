@@ -875,20 +875,13 @@ public class Startup implements AWTEventListener {
   }
 
   public void run() {
-    if (isTty) {
-      try {
-        TtyInterface.run(this);
-        System.exit(0);
-      } catch (Exception t) {
-        t.printStackTrace();
-        System.exit(-1);
-      }
-    }
+    // When -tty tty is passed, run standard mode but hide GUI
+    // This allows testutils components to work while still having headless execution
 
     // kick off the progress monitor
     // (The values used for progress values are based on a single run where
     // I loaded a large file.)
-    if (showSplash) {
+    if (showSplash && !isTty) {
       try {
         monitor = new SplashScreen();
         monitor.setVisible(true);
@@ -1065,7 +1058,12 @@ public class Startup implements AWTEventListener {
               System.exit(-1);
             }
           } else {
-            ProjectActions.doOpen(monitor, fileToOpen, substitutions);
+            // When isTty is true, run headlessly without showing the GUI frame
+            if (isTty) {
+              proj = ProjectActions.doOpenNoWindow(monitor, fileToOpen, substitutions);
+            } else {
+              ProjectActions.doOpen(monitor, fileToOpen, substitutions);
+            }
           }
           numOpened++;
         } catch (LoadFailedException ex) {
@@ -1084,6 +1082,9 @@ public class Startup implements AWTEventListener {
 
     if (proj != null)
       proj.doAction(LogisimFileActions.loadLibraries(defaultLibraries, proj.getLogisimFile()));
+
+    // When isTty is true, just hide GUI - don't run TtyInterface
+    // The simulation will run normally but without showing the window
 
     for (final var fileToPrint : filesToPrint) {
       doPrintFile(fileToPrint);
