@@ -256,11 +256,8 @@ public class StdCommandParser {
             java.util.Iterator<String> iter = commandQueue.iterator();
             while (iter.hasNext()) {
                 String cmd = iter.next();
-                // Only clear store commands (not tick, print, etc.)
-                if (parseStoreCommand(cmd) != null || 
-                    parseRamStoreCommand(cmd) != null || 
-                    parseRomStoreCommand(cmd) != null ||
-                    parseStoreFileCommand(cmd) != null) {
+                // Only clear register store commands (not RAM/ROM - they have their own clear methods)
+                if (parseStoreCommand(cmd) != null) {
                     iter.remove();
                 }
             }
@@ -417,18 +414,15 @@ public class StdCommandParser {
      */
     public StoreCommand[] getStoreCommands() {
         // Get commands and clear immediately to prevent race conditions
-        // where timer fires multiple times before commands are processed
+        // Only clear register store commands (not RAM/ROM - they have their own getters)
         String[] cmds;
         synchronized (commandQueue) {
             cmds = commandQueue.toArray(new String[0]);
-            // Clear only store-related commands
+            // Clear only register store commands (not RAM/ROM)
             java.util.Iterator<String> iter = commandQueue.iterator();
             while (iter.hasNext()) {
                 String cmd = iter.next();
-                if (parseStoreCommand(cmd) != null || 
-                    parseRamStoreCommand(cmd) != null || 
-                    parseRomStoreCommand(cmd) != null ||
-                    parseStoreFileCommand(cmd) != null) {
+                if (parseStoreCommand(cmd) != null) {
                     iter.remove();
                 }
             }
@@ -437,17 +431,7 @@ public class StdCommandParser {
         java.util.List<StoreCommand> stores = new java.util.ArrayList<>();
         
         for (String cmd : cmds) {
-            // Check for RAM/ROM store commands first
-            MemStoreCommand memStore = parseRamStoreCommand(cmd);
-            if (memStore == null) {
-                memStore = parseRomStoreCommand(cmd);
-            }
-            if (memStore != null) {
-                // Convert to regular store command format for compatibility
-                stores.add(new StoreCommand(memStore.getMemName() + "[" + memStore.getAddress() + "]", memStore.getValueStr()));
-                continue;
-            }
-            
+            // Only process register store commands here
             StoreCommand store = parseStoreCommand(cmd);
             if (store != null) {
                 stores.add(store);
@@ -788,6 +772,8 @@ public class StdCommandParser {
                                 synchronized (commandQueue) {
                                     commandQueue.add(cmd);
                                 }
+                                // Notify listeners immediately
+                                notifyListeners(cmd);
                             }
                         }
                     } catch (Exception e) {
@@ -805,6 +791,8 @@ public class StdCommandParser {
                             synchronized (commandQueue) {
                                 commandQueue.add(cmd);
                             }
+                            // Notify listeners immediately
+                            notifyListeners(cmd);
                         }
                     }
                 } catch (IOException e) {

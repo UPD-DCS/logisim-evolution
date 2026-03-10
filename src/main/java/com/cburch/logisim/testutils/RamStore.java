@@ -43,7 +43,7 @@ import javax.swing.Timer;
  * Uses Timer-based polling to check for commands without requiring clock trigger.
  * Command format: store ram ram_name address=0xVALUE (e.g., store ram myRam 0x10=0xFF)
  */
-public class RamStore extends InstanceFactory {
+public class RamStore extends InstanceFactory implements StdCommandParser.CommandListener {
     
     public static final String _ID = "RamStore";
     
@@ -54,15 +54,19 @@ public class RamStore extends InstanceFactory {
     private static final int XSIZE = 60;
     private static final int YSIZE = 50;
     
-    // Data class for Timer-based polling
+    // Data class - stores project reference for command processing
     private static class RamStoreData implements InstanceData, Cloneable, ActionListener {
-        // Timer for checking commands
+        // Reference to project for command processing
+        private com.cburch.logisim.proj.Project project;
+        // Timer for simulation nudging
         private Timer timer;
         private InstanceComponent component;
         private Simulator simulator;
         
         RamStoreData(InstanceState state) {
-            // Initialize timer for checking commands
+            // Store project reference for command processing
+            project = state.getProject();
+            // Initialize timer for simulation nudging
             component = state.getInstance().getComponent();
             simulator = state.getProject().getSimulator();
             timer = new Timer(TIMER_INTERVAL_MS, this);
@@ -80,10 +84,8 @@ public class RamStore extends InstanceFactory {
         
         @Override
         public void actionPerformed(ActionEvent e) {
-            // Timer fired - trigger simulation update to process commands
-            if (component != null) {
-                component.fireInvalidated();
-            }
+            // Timer fired - just nudge simulation
+            // Commands are processed in callback, not here
             if (simulator != null) {
                 simulator.nudge();
             }
@@ -189,11 +191,10 @@ public class RamStore extends InstanceFactory {
             state.setData(data);
         }
         
-        // Get all RAM store commands from the parser
+        // Get RAM store commands from parser (same approach as RegisterStore)
         StdCommandParser.MemStoreCommand[] storeCommands = parser.getRamStoreCommands();
-        StdCommandParser.MemStoreFileCommand[] storeFileCommands = parser.getRamStoreFileCommands();
         
-        if (storeCommands.length == 0 && storeFileCommands.length == 0) {
+        if (storeCommands.length == 0) {
             return;
         }
         
@@ -223,22 +224,6 @@ public class RamStore extends InstanceFactory {
                     + Long.toHexString(value));
             }
         }
-        
-        // Process each storefile command
-        for (StdCommandParser.MemStoreFileCommand cmd : storeFileCommands) {
-            String targetMemName = cmd.getMemName();
-            String fileName = cmd.getFileName();
-            
-            // Load data from file and apply to memory
-            int count = applyFileToMemory(circuitState, targetMemName, fileName, false);
-            
-            if (count > 0) {
-                System.out.println("[RamStore] Loaded " + count + " values from " + fileName + " to " + targetMemName);
-            }
-        }
-        
-        // Clear processed store commands
-        parser.clearStoreCommands();
     }
     
     /**
@@ -453,5 +438,23 @@ public class RamStore extends InstanceFactory {
         public String toString() {
             return "RAM Store";
         }
+    }
+    
+    // CommandListener callback - called immediately when a store command is received
+    @Override
+    public void onStoreCommand(String command, StdCommandParser.StoreCommand storeCmd) {
+        // Don't clear here - let the timer-based processing handle it
+    }
+    
+    // CommandListener callback - called when a tick command is received (not used by RamStore)
+    @Override
+    public void onTickCommand(String command, StdCommandParser.TickCommand tickCmd) {
+        // Not used
+    }
+    
+    // CommandListener callback - called when a print command is received (not used by RamStore)
+    @Override
+    public void onPrintCommand(String command, StdCommandParser.PrintCommand printCmd) {
+        // Not used
     }
 }

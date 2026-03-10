@@ -43,7 +43,7 @@ import javax.swing.Timer;
  * Uses Timer-based polling to check for commands without requiring clock trigger.
  * Command format: store rom rom_name address=0xVALUE (e.g., store rom myRom 0x10=0xFF)
  */
-public class RomStore extends InstanceFactory {
+public class RomStore extends InstanceFactory implements StdCommandParser.CommandListener {
     
     public static final String _ID = "RomStore";
     
@@ -236,9 +236,6 @@ public class RomStore extends InstanceFactory {
                 System.out.println("[RomStore] Loaded " + count + " values from " + fileName + " to " + targetMemName);
             }
         }
-        
-        // Clear processed store commands
-        parser.clearStoreCommands();
     }
     
     /**
@@ -445,5 +442,23 @@ public class RomStore extends InstanceFactory {
         public String toString() {
             return "ROM Store";
         }
+    }
+    
+    // CommandListener callback - called immediately when a store command is received
+    @Override
+    public void onStoreCommand(String command, StdCommandParser.StoreCommand storeCmd) {
+        // Don't clear here - let the timer-based processing handle it
+    }
+    
+    // CommandListener callback - called when a tick command is received (not used by RomStore)
+    @Override
+    public void onTickCommand(String command, StdCommandParser.TickCommand tickCmd) {
+        // Not used
+    }
+    
+    // CommandListener callback - called when a print command is received (not used by RomStore)
+    @Override
+    public void onPrintCommand(String command, StdCommandParser.PrintCommand printCmd) {
+        // Not used
     }
 }
